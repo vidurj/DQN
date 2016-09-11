@@ -307,9 +307,13 @@ class deep_atari:
         self.log_eval.flush()
 
     def select_action(self, st):
+        if self.training:
+            mask = self.mask
+        else:
+            mask = self.mean_mask
         if np.random.rand() > self.params['eps']:
             # greedy with random tie-breaking
-            feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: self.mask}
+            feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: mask}
             Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict)[0]
             Q_pred = Q_pred.flatten()
             a_winner = np.argwhere(Q_pred == np.amax(Q_pred))
@@ -322,7 +326,7 @@ class deep_atari:
         else:
             # random
             act_idx = np.random.randint(0, len(self.engine.legal_actions))
-            feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: self.mask}
+            feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: mask}
             Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict)[0]
             return act_idx, self.engine.legal_actions[act_idx], Q_pred[act_idx]
 
