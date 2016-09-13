@@ -12,9 +12,9 @@ import thread
 gc.enable()
 
 params = {
-	'visualize' : True,
+	'visualize' : False,
 	'network_type':'nips',
-	'ckpt_file':None,
+	'ckpt_file':"pretrained/nips_pretrained",
 	'steps_per_epoch': 50000,
 	'num_epochs': 100,
 	'eval_freq':50000,
@@ -42,7 +42,7 @@ params = {
 	'gpu_fraction' : 0.25,
 	'batch_accumulator':'mean',
 	'record_eval' : True,
-	'only_eval' : 'n'
+	'only_eval' : 'y'
 }
 
 class deep_atari:
