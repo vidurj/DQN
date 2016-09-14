@@ -100,3 +100,10 @@ class DQN:
         self.rmsprop = tf.train.RMSPropOptimizer(self.params['lr'], self.params['rms_decay'], 0.0,
                                                  self.params['rms_eps']).minimize(self.cost,
                                                                                   global_step=self.global_step)
+
+        print "READ THIS" * 30, self.o3.get_shape()
+        self.masks = tf.Variable(tf.float32, (None, self.o3.get_shape()[1]))
+        self.o3_dropout_samples = tf.matmul(self.masks, self.o3)
+        self.q_value_samples = tf.reduce_max(tf.add(tf.matmul(self.o3, self.w4), self.b4), reduction_indices=0)
+        self.best_mask = tf.arg_max(self.q_value_samples, dimension=0)
+

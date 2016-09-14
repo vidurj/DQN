@@ -14,6 +14,7 @@ gc.enable()
 params = {
     'visualize': False,
     'network_type': 'nips',
+    "name": "optimisticFixedMask",
     'ckpt_file': None,
     'steps_per_epoch': 50000,
     'num_epochs': 100,
@@ -50,7 +51,8 @@ class deep_atari:
     def __init__(self, params):
         print 'Initializing Module...'
         self.mean_mask = np.ones(512) / 2.0
-        self.mask = (np.random.rand(512) > 0.5) * 1
+        self.masks = np.array([[1 if i < 256 else 0 for i in range(512)] for j in range(50)])
+        self.mask = np.array([1 if i < 256 else 0 for i in range(512)])
         self.params = params
 
         self.gpu_config = tf.ConfigProto(
@@ -64,11 +66,13 @@ class deep_atari:
         self.build_net()
         self.training = True
 
-    def resample_mask(self):
-        self.mask = (np.random.rand(512) > 0.5) * 1
+    def shuffle_masks(self):
+        temp = np.random.random(self.masks.shape)
+        idx = np.argsort(temp, axis=axis)
+        self.masks = self.masks[np.arange(self.masks.shape[0])[:, None], idx]
 
-    def sample_mask(self):
-        return (np.random.rand(512) > 0.5) * 1
+    def shuffled_mask(self):
+        return np.random.permutation(self.mask)
 
     def build_net(self):
         print 'Building QNet and targetnet...'
@@ -115,20 +119,20 @@ class deep_atari:
         if self.train_cnt > 0:
             self.step = self.train_cnt * self.params['learning_interval']
             try:
-                self.log_train = open('log_training_' + self.params['network_type'] + '.csv', 'a')
+                self.log_train = open('log_training_' + self.params["name"] + self.params['network_type'] + '.csv', 'a')
             except:
-                self.log_train = open('log_training_' + self.params['network_type'] + '.csv', 'w')
+                self.log_train = open('log_training_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
                 self.log_train.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
 
             try:
-                self.log_eval = open('log_eval_' + self.params['network_type'] + '.csv', 'a')
+                self.log_eval = open('log_eval_' + self.params["name"] + self.params['network_type'] + '.csv', 'a')
             except:
-                self.log_eval = open('log_eval_' + self.params['network_type'] + '.csv', 'w')
+                self.log_eval = open('log_eval_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
                 self.log_eval.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
         else:
-            self.log_train = open('log_training_' + self.params['network_type'] + '.csv', 'w')
+            self.log_train = open('log_training_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
             self.log_train.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
-            self.log_eval = open('log_eval_' + self.params['network_type'] + '.csv', 'w')
+            self.log_eval = open('log_eval_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
             self.log_eval.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
 
         self.s = time.time()
@@ -166,7 +170,8 @@ class deep_atari:
                 q_t = np.amax(q_t, axis=1)
 
                 feed_dict = {self.qnet.x: bat_s, self.qnet.q_t: q_t, self.qnet.actions: bat_a,
-                             self.qnet.terminals: bat_t, self.qnet.rewards: bat_r, self.qnet.mask:  self.sample_mask()}
+                             self.qnet.terminals: bat_t, self.qnet.rewards: bat_r,
+                             self.qnet.mask:  self.shuffled_mask()}
 
                 _, self.train_cnt, self.cost = self.sess.run([self.qnet.rmsprop, self.qnet.global_step, self.qnet.cost],
                                                              feed_dict=feed_dict)
@@ -184,7 +189,7 @@ class deep_atari:
             if self.DB.get_size() > self.params['train_start'] and self.step % self.params[
                 'save_interval'] == 0 and self.training:
                 save_idx = self.train_cnt
-                self.saver.save(self.sess, 'ckpt/model_' + self.params['network_type'] + '_' + str(save_idx))
+                self.saver.save(self.sess, 'ckpt/' + self.params['name'] + '_' + self.params['network_type'] + '_' + str(save_idx))
                 sys.stdout.write(
                     '$$$ Model saved : %s\n\n' % ('ckpt/model_' + self.params['network_type'] + '_' + str(save_idx)))
                 sys.stdout.flush()
@@ -219,7 +224,6 @@ class deep_atari:
                 continue
 
             if self.terminal:
-                self.resample_mask()
                 self.reset_game()
                 if self.training:
                     self.num_epi_train += 1
@@ -248,6 +252,7 @@ class deep_atari:
         # TODO : add video recording
 
     def reset_game(self):
+        self.maskUpdateCount = 100
         self.state_proc = np.zeros((84, 84, 4));
         self.action = -1;
         self.terminal = False;
@@ -306,12 +311,23 @@ class deep_atari:
         self.log_eval.write(str(self.params['eps']) + ',' + str(time.time() - self.s) + '\n')
         self.log_eval.flush()
 
+    def select_new_mask(self, st):
+        self.maskUpdateCount = 0
+        self.sample_masks()
+        feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)),
+                     self.qnet.masks: self.masks}
+        whichMask = self.sess.run(self.qnet.best_mask, feed_dict=feed_dict)
+        self.mask = self.masks[whichMask]
+
     def select_action(self, st):
-        if self.training:
-            mask = self.mask
-        else:
-            mask = self.mean_mask
         if np.random.rand() > self.params['eps']:
+            if self.training:
+                if self.maskUpdateCount > 30:
+                    self.select_new_mask(st)
+                self.maskUpdateCount += 1
+                mask = self.mask
+            else:
+                mask = self.mean_mask
             # greedy with random tie-breaking
             feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: mask}
             Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict)[0]
@@ -326,9 +342,7 @@ class deep_atari:
         else:
             # random
             act_idx = np.random.randint(0, len(self.engine.legal_actions))
-            feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: mask}
-            Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict)[0]
-            return act_idx, self.engine.legal_actions[act_idx], Q_pred[act_idx]
+            return act_idx, self.engine.legal_actions[act_idx], 0
 
     def get_onehot(self, actions):
         actions_onehot = np.zeros((self.params['batch'], self.params['num_act']))
