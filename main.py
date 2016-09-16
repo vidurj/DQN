@@ -14,7 +14,7 @@ gc.enable()
 params = {
     'visualize': False,
     'network_type': 'nips',
-    "name": "optimisticFixedMask",
+    "name": "incrediblyOptimisticFixedMask",
     'ckpt_file': None,
     'steps_per_epoch': 50000,
     'num_epochs': 100,
@@ -50,8 +50,9 @@ params = {
 class deep_atari:
     def __init__(self, params):
         print 'Initializing Module...'
+        self.maskUpdateCount = 100
         self.mean_mask = np.ones(512) / 2.0
-        self.masks = np.array([[1 if i < 256 else 0 for i in range(512)] for j in range(50)])
+        self.masks = np.array([[1 if i < 256 else 0 for i in range(512)] for j in range(1000)])
         self.mask = np.array([1 if i < 256 else 0 for i in range(512)])
         self.params = params
 
@@ -66,7 +67,7 @@ class deep_atari:
         self.build_net()
         self.training = True
 
-    def shuffle_masks(self):
+    def shuffle_masks(self, axis=-1):
         temp = np.random.random(self.masks.shape)
         idx = np.argsort(temp, axis=axis)
         self.masks = self.masks[np.arange(self.masks.shape[0])[:, None], idx]
@@ -313,7 +314,7 @@ class deep_atari:
 
     def select_new_mask(self, st):
         self.maskUpdateCount = 0
-        self.sample_masks()
+        self.shuffle_masks()
         feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)),
                      self.qnet.masks: self.masks}
         whichMask = self.sess.run(self.qnet.best_mask, feed_dict=feed_dict)
