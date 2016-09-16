@@ -14,7 +14,6 @@ gc.enable()
 params = {
     'visualize': False,
     'network_type': 'nips',
-    "name": "incrediblyOptimisticFixedMask",
     'ckpt_file': None,
     'steps_per_epoch': 50000,
     'num_epochs': 100,
@@ -46,6 +45,8 @@ params = {
     'only_eval': 'n'
 }
 
+print "Give this run a name under which to save checkpoints and scores"
+params["name"] = raw_input("")
 
 class deep_atari:
     def __init__(self, params):
@@ -80,6 +81,12 @@ class deep_atari:
         self.qnet = DQN(self.params, 'qnet')
         self.targetnet = DQN(self.params, 'targetnet')
         self.sess.run(tf.initialize_all_variables())
+        conv_loader_dict = {'qw1': self.qnet.w1, 'qb1': self.qnet.b1,
+                      'qw2': self.qnet.w2, 'qb2': self.qnet.b2,
+                      'tw1': self.targetnet.w1, 'tb1': self.targetnet.b1,
+                      'tw2': self.targetnet.w2, 'tb2': self.targetnet.b2}
+        self.conv_loader = tf.train.Saver(conv_loader_dict)
+        self.conv_loader.restore(self.sess, "pretrained/nips_pretrained")
         saver_dict = {'qw1': self.qnet.w1, 'qb1': self.qnet.b1,
                       'qw2': self.qnet.w2, 'qb2': self.qnet.b2,
                       'qw3': self.qnet.w3, 'qb3': self.qnet.b3,
@@ -120,20 +127,20 @@ class deep_atari:
         if self.train_cnt > 0:
             self.step = self.train_cnt * self.params['learning_interval']
             try:
-                self.log_train = open('log_training_' + self.params["name"] + self.params['network_type'] + '.csv', 'a')
+                self.log_train = open('log_training_' + self.params["name"] + '.csv', 'a')
             except:
-                self.log_train = open('log_training_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
+                self.log_train = open('log_training_' + self.params["name"] + '.csv', 'w')
                 self.log_train.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
 
             try:
-                self.log_eval = open('log_eval_' + self.params["name"] + self.params['network_type'] + '.csv', 'a')
+                self.log_eval = open('log_eval_' + self.params["name"] + '.csv', 'a')
             except:
-                self.log_eval = open('log_eval_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
+                self.log_eval = open('log_eval_' + self.params["name"] + '.csv', 'w')
                 self.log_eval.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
         else:
-            self.log_train = open('log_training_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
+            self.log_train = open('log_training_' + self.params["name"] + '.csv', 'w')
             self.log_train.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
-            self.log_eval = open('log_eval_' + self.params["name"] + self.params['network_type'] + '.csv', 'w')
+            self.log_eval = open('log_eval_' + self.params["name"] + '.csv', 'w')
             self.log_eval.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
 
         self.s = time.time()
@@ -392,7 +399,7 @@ if __name__ == "__main__":
         params['eval_freq'] = 100000
         params['steps_per_eval'] = 10000
         params['copy_freq'] = 10000
-        params['disp_freq'] = 20000
+        params['disp_freq'] = 10000
         params['save_interval'] = 20000
         params['learning_interval'] = 1
         params['discount'] = 0.99
