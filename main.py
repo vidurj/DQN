@@ -53,7 +53,6 @@ class deep_atari:
         print 'Initializing Module...'
         self.maskUpdateCount = 100
         self.mean_mask = np.ones(512) / 2.0
-        self.masks = np.array([[1 if i < 256 else 0 for i in range(512)] for j in range(1000)])
         self.mask = np.array([1 if i < 256 else 0 for i in range(512)])
         self.params = params
 
@@ -68,13 +67,8 @@ class deep_atari:
         self.build_net()
         self.training = True
 
-    def shuffle_masks(self, axis=-1):
-        temp = np.random.random(self.masks.shape)
-        idx = np.argsort(temp, axis=axis)
-        self.masks = self.masks[np.arange(self.masks.shape[0])[:, None], idx]
-
     def shuffled_mask(self):
-        return np.random.permutation(self.mask)
+        np.random.shuffle(self.mask)
 
     def build_net(self):
         print 'Building QNet and targetnet...'
@@ -169,17 +163,17 @@ class deep_atari:
                 bat_a = self.get_onehot(bat_a)
 
                 if self.params['copy_freq'] > 0:
-                    feed_dict = {self.targetnet.x: bat_n, self.targetnet.mask:  self.mean_mask}
+                    feed_dict = {self.targetnet.x: bat_n, self.targetnet.mask:  self.mask}
                     q_t = self.sess.run(self.targetnet.y, feed_dict=feed_dict)
                 else:
-                    feed_dict = {self.qnet.x: bat_n, self.qnet.mask:  self.mean_mask}
+                    feed_dict = {self.qnet.x: bat_n, self.qnet.mask:  self.mask}
                     q_t = self.sess.run(self.qnet.y, feed_dict=feed_dict)
 
                 q_t = np.amax(q_t, axis=1)
 
                 feed_dict = {self.qnet.x: bat_s, self.qnet.q_t: q_t, self.qnet.actions: bat_a,
                              self.qnet.terminals: bat_t, self.qnet.rewards: bat_r,
-                             self.qnet.mask:  self.shuffled_mask()}
+                             self.qnet.mask:  self.mask}
 
                 _, self.train_cnt, self.cost = self.sess.run([self.qnet.rmsprop, self.qnet.global_step, self.qnet.cost],
                                                              feed_dict=feed_dict)
@@ -260,7 +254,7 @@ class deep_atari:
         # TODO : add video recording
 
     def reset_game(self):
-        self.maskUpdateCount = 100
+        self.shuffled_mask()
         self.state_proc = np.zeros((84, 84, 4));
         self.action = -1;
         self.terminal = False;
@@ -319,20 +313,9 @@ class deep_atari:
         self.log_eval.write(str(self.params['eps']) + ',' + str(time.time() - self.s) + '\n')
         self.log_eval.flush()
 
-    def select_new_mask(self, st):
-        self.maskUpdateCount = 0
-        self.shuffle_masks()
-        feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)),
-                     self.qnet.masks: self.masks}
-        whichMask = self.sess.run(self.qnet.best_mask, feed_dict=feed_dict)
-        self.mask = self.masks[whichMask]
-
     def select_action(self, st):
         if np.random.rand() > self.params['eps']:
             if self.training:
-                if self.maskUpdateCount > 30:
-                    self.select_new_mask(st)
-                self.maskUpdateCount += 1
                 mask = self.mask
             else:
                 mask = self.mean_mask
@@ -403,7 +386,7 @@ if __name__ == "__main__":
         params['save_interval'] = 20000
         params['learning_interval'] = 1
         params['discount'] = 0.99
-        params['lr'] = 0.001
+        params['lr'] = 0.00025
         params['rms_decay'] = 0.95
         params['rms_eps'] = 0.01
         params['clip_delta'] = 1.0
