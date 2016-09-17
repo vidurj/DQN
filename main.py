@@ -403,7 +403,7 @@ if __name__ == "__main__":
         params['save_interval'] = 20000
         params['learning_interval'] = 1
         params['discount'] = 0.99
-        params['lr'] = 0.00025
+        params['lr'] = 0.001
         params['rms_decay'] = 0.95
         params['rms_eps'] = 0.01
         params['clip_delta'] = 1.0
