@@ -163,10 +163,10 @@ class deep_atari:
                 bat_a = self.get_onehot(bat_a)
 
                 if self.params['copy_freq'] > 0:
-                    feed_dict = {self.targetnet.x: bat_n, self.targetnet.mask:  self.mask}
+                    feed_dict = {self.targetnet.x: bat_n, self.targetnet.mask:  self.mean_mask}
                     q_t = self.sess.run(self.targetnet.y, feed_dict=feed_dict)
                 else:
-                    feed_dict = {self.qnet.x: bat_n, self.qnet.mask:  self.mask}
+                    feed_dict = {self.qnet.x: bat_n, self.qnet.mask:  self.mean_mask}
                     q_t = self.sess.run(self.qnet.y, feed_dict=feed_dict)
 
                 q_t = np.amax(q_t, axis=1)
