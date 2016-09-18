@@ -45,15 +45,15 @@ params = {
     'only_eval': 'n'
 }
 
-print "Give this run a name under which to save checkpoints and scores"
+print("Give this run a name under which to save checkpoints and scores")
 params["name"] = raw_input("")
 
 class deep_atari:
     def __init__(self, params):
-        print 'Initializing Module...'
-        self.maskUpdateCount = 100
+        print('Initializing Module...')
         self.mean_mask = np.ones(512) / 2.0
-        self.mask = np.array([1 if i < 256 else 0 for i in range(512)])
+        self._mask = np.array([1 if i < 256 else 0 for i in range(512)])
+        self.masks = np.array([[1 if i < 256 else 0 for i in range(512)] for j in range(50)])
         self.params = params
 
         self.gpu_config = tf.ConfigProto(
@@ -68,10 +68,14 @@ class deep_atari:
         self.training = True
 
     def shuffled_mask(self):
-        np.random.shuffle(self.mask)
+        np.random.permutation(self._mask)
+
+    def shuffle_masks(self):
+        for i in range(len(self.masks)):
+            np.random.shuffle(self.masks[i])
 
     def build_net(self):
-        print 'Building QNet and targetnet...'
+        print('Building QNet and targetnet...')
         self.qnet = DQN(self.params, 'qnet')
         self.targetnet = DQN(self.params, 'targetnet')
         self.sess.run(tf.initialize_all_variables())
@@ -104,13 +108,13 @@ class deep_atari:
         self.sess.run(self.cp_ops)
 
         if self.params['ckpt_file'] is not None:
-            print 'loading checkpoint : ' + self.params['ckpt_file']
+            print('loading checkpoint : ' + self.params['ckpt_file'])
             self.saver.restore(self.sess, self.params['ckpt_file'])
             temp_train_cnt = self.sess.run(self.qnet.global_step)
             temp_step = temp_train_cnt * self.params['learning_interval']
-            print 'Continue from'
-            print '        -> Steps : ' + str(temp_step)
-            print '        -> Minibatch update : ' + str(temp_train_cnt)
+            print('Continue from')
+            print('        -> Steps : ' + str(temp_step))
+            print('        -> Minibatch update : ' + str(temp_train_cnt))
 
     def start(self):
         self.reset_game()
@@ -138,9 +142,9 @@ class deep_atari:
             self.log_eval.write('step,epoch,train_cnt,avg_reward,avg_q,epsilon,time\n')
 
         self.s = time.time()
-        print self.params
-        print 'Start training!'
-        print 'Collecting replay memory for ' + str(self.params['train_start']) + ' steps'
+        print(self.params)
+        print('Start training!')
+        print('Collecting replay memory for ' + str(self.params['train_start']) + ' steps')
 
         while self.step < (
                     self.params['steps_per_epoch'] * self.params['num_epochs'] * self.params['learning_interval'] +
@@ -154,7 +158,7 @@ class deep_atari:
 
             if self.training and self.params['copy_freq'] > 0 and self.step % self.params[
                 'copy_freq'] == 0 and self.DB.get_size() > self.params['train_start']:
-                print '&&& Copying Qnet to targetnet\n'
+                print('&&& Copying Qnet to targetnet\n')
                 self.sess.run(self.cp_ops)
 
             if self.training and self.step % self.params['learning_interval'] == 0 and self.DB.get_size() > self.params[
@@ -163,17 +167,17 @@ class deep_atari:
                 bat_a = self.get_onehot(bat_a)
 
                 if self.params['copy_freq'] > 0:
-                    feed_dict = {self.targetnet.x: bat_n, self.targetnet.mask:  self.mask}
+                    feed_dict = {self.targetnet.x: bat_n, self.targetnet.mask:  self.mean_mask}
                     q_t = self.sess.run(self.targetnet.y, feed_dict=feed_dict)
                 else:
-                    feed_dict = {self.qnet.x: bat_n, self.qnet.mask:  self.mask}
+                    feed_dict = {self.qnet.x: bat_n, self.qnet.mask:  self.mean_mask}
                     q_t = self.sess.run(self.qnet.y, feed_dict=feed_dict)
 
                 q_t = np.amax(q_t, axis=1)
 
                 feed_dict = {self.qnet.x: bat_s, self.qnet.q_t: q_t, self.qnet.actions: bat_a,
                              self.qnet.terminals: bat_t, self.qnet.rewards: bat_r,
-                             self.qnet.mask:  self.mask}
+                             self.qnet.mask:  self.shuffled_mask()}
 
                 _, self.train_cnt, self.cost = self.sess.run([self.qnet.rmsprop, self.qnet.global_step, self.qnet.cost],
                                                              feed_dict=feed_dict)
@@ -254,8 +258,8 @@ class deep_atari:
         # TODO : add video recording
 
     def reset_game(self):
-        self.shuffled_mask()
-        self.state_proc = np.zeros((84, 84, 4));
+        self.shuffle_masks()
+        self.state_proc = np.zeros((84, 84, 4))
         self.action = -1;
         self.terminal = False;
         self.reward = 0
@@ -316,12 +320,13 @@ class deep_atari:
     def select_action(self, st):
         if np.random.rand() > self.params['eps']:
             if self.training:
-                mask = self.mask
+                feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.masks: self.masks}
+                Q_pred = self.sess.run(self.qnet.most_optimal_preds, feed_dict=feed_dict)[0]
             else:
-                mask = self.mean_mask
+                feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: self.mean_mask}
+                Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict)[0]
+
             # greedy with random tie-breaking
-            feed_dict = {self.qnet.x: np.reshape(st, (1, 84, 84, 4)), self.qnet.mask: mask}
-            Q_pred = self.sess.run(self.qnet.y, feed_dict=feed_dict)[0]
             Q_pred = Q_pred.flatten()
             a_winner = np.argwhere(Q_pred == np.amax(Q_pred))
             if len(a_winner) > 1:
@@ -356,8 +361,8 @@ if __name__ == "__main__":
             elif sys.argv[i + 1] == 'n':
                 params['visualize'] = False
             else:
-                print 'Invalid visualization argument!!! Available arguments are'
-                print '        y or n'
+                print('Invalid visualization argument!!! Available arguments are')
+                print('        y or n')
                 raise ValueError()
         elif sys.argv[i] == '-gpu_fraction':
             params['gpu_fraction'] = float(sys.argv[i + 1])
@@ -366,12 +371,12 @@ if __name__ == "__main__":
         elif sys.argv[i] == '-only_eval':
             params['only_eval'] = sys.argv[i + 1]
         else:
-            print 'Invalid arguments!!! Available arguments are'
-            print '        -weight (filename)'
-            print '        -network_type (nips or nature)'
-            print '        -visualize (y or n)'
-            print '        -gpu_fraction (0.1~0.9)'
-            print '        -db_size (integer)'
+            print('Invalid arguments!!! Available arguments are')
+            print('        -weight (filename)')
+            print('        -network_type (nips or nature)')
+            print('        -visualize (y or n)')
+            print('        -gpu_fraction (0.1~0.9)')
+            print('        -db_size (integer)')
             raise ValueError()
     if params['network_type'] == 'nips':
         from DQN_nips import *
@@ -396,8 +401,8 @@ if __name__ == "__main__":
         params['num_epochs'] = 250
         params['batch'] = 32
     else:
-        print 'Invalid network type! Available network types are'
-        print '        nips or nature'
+        print('Invalid network type! Available network types are')
+        print('        nips or nature')
         raise ValueError()
 
     if params['only_eval'] == 'y':
@@ -405,8 +410,8 @@ if __name__ == "__main__":
     elif params['only_eval'] == 'n':
         only_eval = False
     else:
-        print 'Invalid only_eval option! Available options are'
-        print '        y or n'
+        print('Invalid only_eval option! Available options are')
+        print('        y or n')
         raise ValueError()
 
     if only_eval:

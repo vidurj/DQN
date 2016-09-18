@@ -45,7 +45,8 @@ class DQN:
             self.w3 = w3 = tf.Variable(tf.random_normal([dim, hiddens], stddev=0.01))
             self.b3 = b3 = tf.Variable(tf.constant(0.1, shape=[hiddens]))
             self.mask = tf.placeholder(tf.float32, [512])
-            o3_dropout = tf.nn.relu(tf.add(tf.matmul(o2_flat, w3), b3)) * self.mask
+            o3 = tf.nn.relu(tf.add(tf.matmul(o2_flat, w3), b3))
+            o3_dropout = o3 * self.mask
 
             # fc4
             hiddens = params['num_act']
@@ -73,9 +74,8 @@ class DQN:
         #fc_variables = tf.get_collection(tf.GraphKeys.VARIABLES, scope='FC')
         self.rmsprop = optimizer.minimize(self.cost, global_step=self.global_step)#, var_list=fc_variables)
 
-        # masks = tf.Variable(np.zeros((50, 512)))
-        # o3_reshaped = tf.reshape(o3, shape=[512])
-        # o3_dropout_samples = tf.mul(masks, o3_reshaped)
-        # q_value_samples = tf.add(tf.matmul(o3_dropout_samples, w4), b4)
-        # most_optimal_preds = tf.reduce_max(q_value_samples, reduction_indices=0)
-        # print "read this  " * 100, most_optimal_preds.get_shape()
+        self.masks = tf.placeholder(tf.float32, (50, 512))
+        o3_dropout_samples = tf.mul(self.masks, o3)
+        q_value_samples = tf.add(tf.matmul(o3_dropout_samples, w4), b4)
+        self.most_optimal_preds = tf.reduce_max(q_value_samples, reduction_indices=0)
+        print("read this  " * 100, self.most_optimal_preds.get_shape())
