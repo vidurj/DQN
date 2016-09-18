@@ -68,7 +68,7 @@ class deep_atari:
         self.training = True
 
     def shuffled_mask(self):
-        np.random.permutation(self._mask)
+        return np.random.permutation(self._mask)
 
     def shuffle_masks(self):
         for i in range(len(self.masks)):
